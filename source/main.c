@@ -19,8 +19,10 @@ u64 TICKS_PER_MS = 268123;
 
 int maxDepth = 0;
 u32 colorCode(int color);
-int getNeighborX(int x, int p);
-int getNeighborY(int y, int p);
+int getMooreNeighborX(int x, int p);
+int getMooreNeighborY(int y, int p);
+int getNeumannNeighborX(int x, int p);
+int getNeumannNeighborY(int y, int p);
 bool randomize = false;
 bool toggle = false;
 bool clear = false;
@@ -60,6 +62,16 @@ int sanitizeY(int y) {
 	}
 	return abs(y) % 240;
 }
+void makePixel2(int x, int y, u32 color) {
+	if (x > 320) x = 0;
+	else if(x < 0) x = 319;
+	if (y > 240) y = 0;
+	else if (y < 0) y = 239;
+	u32 offset = ((x * 240) - y + 239) * 3;
+	oldbuffer[offset] = (u8)color;
+	oldbuffer[offset + 1] = (u8)(color >> 8);
+	oldbuffer[offset + 2] = (u8)(color >> 16);
+}
 void makePixel(int x, int y, u32 color) {
 	if (x > 320) x = 0;
 	else if(x < 0) x = 319;
@@ -74,6 +86,12 @@ int getPrimaryColor(u32 color) {
 	if (color & 0x00ff0000) return 1;		// is red
 	if (color & 0x000000ff) return 2;		// is blue
 	return 0;								// is dead
+}
+void writeColor2(int x, int y, u32 color) {
+	makePixel2(x, sanitizeY(y + 1),color);
+	makePixel2(sanitizeX(x + 1),sanitizeY(y + 1),color);
+	makePixel2(sanitizeX(x + 1),y,color);
+	makePixel2(x,y,color);
 }
 void writeColor(int x, int y, u32 color) {
 	makePixel(x, sanitizeY(y + 1),color);
@@ -121,16 +139,15 @@ u32 newColor(u32 color, int dominantColor) {
 	int primary = getPrimaryColor(color);
 	if (!primary) return color;
 	if (dominantColor != primary) {
-		return colorCode(dominantColor);
-		/*if (dominantColor == 2) {
+		//return colorCode(dominantColor);
+		if (dominantColor == 2) {
 			color = ((color & 0x00ff0000) >> 16) | 0xff000000;
 		}
 		else {
 			color = ((color & 0x000000ff) << 16) | 0xff000000;
-		}*/
+		}
 	}
 	if (generations[primary % 2] <= 1) return color;
-	float shade = getShade(color);
 	if (getShade(darken(color,(float)(1.0f / (float)(generations[primary % 2] - 1)))) <= pow((float)(1.0f - (float)(1.0f / (float)(generations[primary % 2] - 1))), generations[primary % 2] - 1)) return 0xff000000;	// dead
 	return darken(color, (float)(1.0f / (float)(generations[primary % 2] - 1)));
 }
@@ -249,17 +266,18 @@ void randomize_screen() {
 }
 void convertColor(int x, int y, int newColor) {
 	maxDepth++;
-	if (maxDepth > 1000) return;
+	if (maxDepth > 800) return;
 	if (!getColor(mybuffer,x,y)) return;
 	writeColor(x,y,changeColor(getColor(mybuffer,x,y),newColor));	// change current cell's color
+	writeColor2(x,y,changeColor(getColor(mybuffer,x,y),newColor));
 	int i = rand() % 8;
 	int end = i;
 	for (i = (i + 1) % 8; i != end; i = (i + 1) % 8) {
-		u32 neighbor = getColor(mybuffer,getNeighborX(x,i),getNeighborY(y,i));
+		u32 neighbor = getColor(mybuffer,getMooreNeighborX(x,i),getMooreNeighborY(y,i));
 		int primary = getPrimaryColor(neighbor);
 		if (primary == 0 || primary == newColor) continue;				// we don't need to change this one's color.
-		convertColor(getNeighborX(x,i),getNeighborY(y,i),newColor);					// change its neighbors too!
-		//else writeColor(getNeighborX(x,i),getNeighborY(y,i),changeColor(neighbor,newColor));	// change only the neighbor. not a reproducing cell.
+		convertColor(getMooreNeighborX(x,i),getMooreNeighborY(y,i),newColor);					// change its neighbors too!
+		//else writeColor(getMooreNeighborX(x,i),getMooreNeighborY(y,i),changeColor(neighbor,newColor));	// change only the neighbor. not a reproducing cell.
 	}
 }
 void fill_screen_init() {
@@ -352,8 +370,6 @@ void fill_screen_draw() {
 void displayMessage() {
 	hidScanInput();
 	u32 kDown = hidKeysDown();
-	u32 kUp = hidKeysUp();
-	u32 kHeld = hidKeysHeld();
 	if (kDown & KEY_START) {
 		popScene();
 		return;
@@ -366,7 +382,187 @@ void displayMessage_draw() {
 }
 void displayMessage_finish() {
 }
-int getNeighborX(int x, int p) {
+int getLargeNeighborX(int x, int p) {
+	/*if (p < 0 || p >= 24) p = 0;
+	if (p >= 12) p++;
+	return x + (2 * (2 - (p % 5)));*/
+	switch (p) {
+		case 0:
+		return sanitizeX(x + 4);
+		break;
+		case 1:
+			return sanitizeX(x + 2);
+			break;
+		case 2:
+			return sanitizeX(x + 0);
+			break;
+		case 3:
+			return sanitizeX(x + -2);
+			break;
+		case 4:
+			return sanitizeX(x + -4);
+			break;
+		case 5:
+			return sanitizeX(x + 4);
+			break;
+		case 6:
+			return sanitizeX(x + 2);
+			break;
+		case 7:
+			return sanitizeX(x + 0);
+			break;
+		case 8:
+			return sanitizeX(x + -2);
+			break;
+		case 9:
+			return sanitizeX(x + -4);
+			break;
+		case 10:
+			return sanitizeX(x + 4);
+			break;
+		case 11:
+			return sanitizeX(x + 2);
+			break;
+		case 12:
+			return sanitizeX(x + -2);
+			break;
+		case 13:
+			return sanitizeX(x + -4);
+			break;
+		case 14:
+			return sanitizeX(x + 4);
+			break;
+		case 15:
+			return sanitizeX(x + 2);
+			break;
+		case 16:
+		default:
+			return sanitizeX(x + 0);
+			break;
+		case 17:
+			return sanitizeX(x + -2);
+			break;
+		case 18:
+			return sanitizeX(x + -4);
+			break;
+		case 19:
+			return sanitizeX(x + 4);
+			break;
+		case 20:
+			return sanitizeX(x + 2);
+			break;
+		case 21:
+			return sanitizeX(x + 0);
+			break;
+		case 22:
+			return sanitizeX(x + -2);
+			break;
+		case 23:
+			return sanitizeX(x + -4);
+			break;
+	}
+}
+int getLargeNeighborY(int y, int p) {
+	/*if (p < 0 || p >= 24) p = 0;
+	if (p >= 12) p++;
+    return y + (2 * (2 - (p / 5)));*/
+    switch (p) {
+    	case 0:
+			return sanitizeY(y + 4);
+			break;
+		case 1:
+			return sanitizeY(y + 4);
+			break;
+		case 2:
+			return sanitizeY(y + 4);
+			break;
+		case 3:
+			return sanitizeY(y + 4);
+			break;
+		case 4:
+			return sanitizeY(y + 4);
+			break;
+		case 5:
+			return sanitizeY(y + 2);
+			break;
+		case 6:
+			return sanitizeY(y + 2);
+			break;
+		case 7:
+			return sanitizeY(y + 2);
+			break;
+		case 8:
+			return sanitizeY(y + 2);
+			break;
+		case 9:
+			return sanitizeY(y + 2);
+			break;
+		case 10:
+		default:
+			return sanitizeY(y + 0);
+			break;
+		case 11:
+			return sanitizeY(y + 0);
+			break;
+		case 12:
+			return sanitizeY(y + 0);
+			break;
+		case 13:
+			return sanitizeY(y + 0);
+			break;
+		case 14:
+			return sanitizeY(y + -2);
+			break;
+		case 15:
+			return sanitizeY(y + -2);
+			break;
+		case 16:
+			return sanitizeY(y + -2);
+			break;
+		case 17:
+			return sanitizeY(y + -2);
+			break;
+		case 18:
+			return sanitizeY(y + -2);
+			break;
+		case 19:
+			return sanitizeY(y + -4);
+			break;
+		case 20:
+			return sanitizeY(y + -4);
+			break;
+		case 21:
+			return sanitizeY(y + -4);
+			break;
+		case 22:
+			return sanitizeY(y + -4);
+			break;
+		case 23:
+			return sanitizeY(y + -4);
+			break;
+    }
+}
+int getNeumannNeighborX(int x, int p) {
+	switch(p) {
+		case 0:
+			return sanitizeX(x - 2);
+		case 3:
+			return sanitizeX(x + 2);
+		default:
+			return sanitizeX(x);
+	}
+}
+int getNeumannNeighborY(int y, int p) {
+	switch (p) {
+		case 1:
+			return sanitizeY(y - 2);
+		case 2:
+			return sanitizeY(y + 2);
+		default:
+			return sanitizeY(y);
+	}
+}
+int getMooreNeighborX(int x, int p) {
 	switch(p) {
 		case 0:
 		case 3:
@@ -383,7 +579,7 @@ int getNeighborX(int x, int p) {
 			return sanitizeX(x);
 	}
 }
-int getNeighborY(int y, int p) {
+int getMooreNeighborY(int y, int p) {
 	switch(p) {
 		case 0:
 		case 1:
@@ -415,8 +611,6 @@ void conversion_init() {
 void conversion_update() {
 	hidScanInput();
 	u32 kDown = hidKeysDown();
-	u32 kHeld = hidKeysHeld();
-	u32 kUp = hidKeysUp();
 	touchPosition touch;
 	hidTouchRead(&touch);
 	if (touch.px && touch.py) {
@@ -478,7 +672,6 @@ void conversion_draw() {
 			makePixel(x,y,0xffffffff); 				//white pixel border.
 		}
 	}
-	u32 color = colorCode(makeColor);
 	for (int w = 0; w < MENU_WIDTH; w += 11) { 		// 10 blocks of 11 pixels
 		for (int h = 0; h < MENU_HEIGHT; h += 12) { // 9 blocks of 12 pixels from top to bottom
 			int block = w / 11;
@@ -526,8 +719,6 @@ void menu_init() {
 void menu_update() {
 	hidScanInput();
 	u32 kDown = hidKeysDown();
-	u32 kHeld = hidKeysHeld();
-	u32 kUp = hidKeysUp();
 	touchPosition touch;
 	hidTouchRead(&touch);
 	if (touch.px && touch.py) {
@@ -633,20 +824,22 @@ void applyRules() {
 			//for every x and y on the bottom screen...
 			u32 color = getColor(oldbuffer,x,y);
 			int dominantColor = getPrimaryColor(color);
-			if (dominantColor == 0) dominantColor = 1;
 			int primary = dominantColor;
-			int livingColor[2][2];
+			if (dominantColor == 0) dominantColor = 1;
+			int livingColor[2][3];
 			memset(livingColor,0,sizeof(livingColor));
 			int livingNeighbors = 0;
 			int me = getShade(getColor(oldbuffer,x,y)) != 0 ? 1 : 0;
 			for (int n = 0; n < 8; n++) {
 				//for every neighbor of that x and y...
-				u32 neighborColor = getColor(oldbuffer,getNeighborX(x,n),getNeighborY(y,n));
-				if (neighborColor) {
+				u32 neighborColor = getColor(oldbuffer,getMooreNeighborX(x,n),getMooreNeighborY(y,n));
+				int primaryNeighbor = getPrimaryColor(neighborColor);
+				if (primaryNeighbor) {
 					livingNeighbors++;
-					livingColor[getPrimaryColor(neighborColor) % 2][1]++;
+					livingColor[primaryNeighbor % 2][1]++;		// von Neuman Neighborhood, manhatten distance = 2
+					if (getMooreNeighborX(0,n) == 0 || getMooreNeighborY(0,n) == 0) livingColor[primaryNeighbor % 2][2]++;	// von Neumann Neighborhood, manhattan distance = 1
 					if (getShade(neighborColor) >= 1.0f) {
-						livingColor[getPrimaryColor(neighborColor) % 2][0]++;
+						livingColor[primaryNeighbor % 2][0]++;	// living cell in von Neumann Neighborhood, manhatten distance = 2
 					}
 				}
 			}
@@ -659,10 +852,31 @@ void applyRules() {
 			} else if (conversion[livingColor[(dominantColor + 1) % 2][1]][dominantColor % 2]) {	// if the conversion rules say to swap color
 				if (dominantColor == 1) dominantColor = 2;									// then swap colors
 				else dominantColor = 1;
+				writeColor(x,y,changeColor(color,dominantColor));
+				writeColor2(x,y,changeColor(color,dominantColor));	
+				for (int i = 0; i < 4; i++) {
+					u32 neighbor = getColor(oldbuffer,getNeumannNeighborX(x,i),getNeumannNeighborY(y,i));
+					if (getPrimaryColor(neighbor) != dominantColor) {
+						writeColor(getNeumannNeighborX(x,i),getNeumannNeighborY(y,i),changeColor(neighbor,dominantColor));
+						writeColor2(getNeumannNeighborX(x,i),getNeumannNeighborY(y,i),changeColor(neighbor,dominantColor));						
+					}
+				}
+				continue;
+				/*maxDepth = 0;
+				if (generations[dominantColor % 2] > 2) {
+					writeColor(x,y,newColor(color,primary));
+					writeColor2(x,y,newColor(color,primary));
+					convertColor(x,y,dominantColor);
+				} else {
+					convertColor(x,y,dominantColor);
+				}
+				continue;*/
 			}
 
 			if (rules[livingColor[dominantColor % 2][0]][me][dominantColor % 2]) {
-				if (me == 0) writeColor(x,y,colorCode(dominantColor));
+				if (me == 0) {
+					if (livingColor[dominantColor % 2][0] > livingColor[(dominantColor + 1) % 2][0]) writeColor(x,y,colorCode(dominantColor));
+				}
 				else {
 					if (getShade(color) == 1.0) writeColor(x,y,changeColor(color,dominantColor)); //we live
 					else writeColor(x,y,newColor(color,dominantColor));	// we age
